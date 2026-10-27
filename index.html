@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>출근 일정 및 월급액 정리</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f3f4f6;
+        }
+        /* Custom scrollbar for better aesthetics */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+        /* Toast notification animation */
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        .toast-enter {
+            animation: slideIn 0.3s ease-out forwards;
+        }
+        .toast-exit {
+            animation: fadeOut 0.3s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="text-gray-800 antialiased min-h-screen">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
+
+    <div class="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="mb-8 flex flex-col sm:flex-row justify-between items-center bg-white p-6 rounded-2xl shadow-sm">
+            <div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">🗓️ 출근 일정 및 월급액 정리</h1>
+                <p class="text-sm text-gray-500 mt-1">일급 근로자를 위한 스마트한 급여 관리</p>
+            </div>
+            
+            <!-- Month Selector -->
+            <div class="flex items-center gap-4 mt-4 sm:mt-0 bg-gray-50 p-2 rounded-lg border border-gray-100">
+                <button onclick="changeMonth(-1)" class="p-2 hover:bg-white rounded-md shadow-sm transition text-gray-600">◀</button>
+                <span id="current-month-display" class="font-semibold text-lg w-24 text-center">2026. 10</span>
+                <button onclick="changeMonth(1)" class="p-2 hover:bg-white rounded-md shadow-sm transition text-gray-600">▶</button>
+            </div>
+        </header>
+
+        <div class="flex flex-col lg:flex-row gap-6">
+            
+            <!-- Left Column: Controls (Settings & Registration) -->
+            <div class="w-full lg:w-1/3 flex flex-col gap-6">
+                
+                <!-- Wage Setting Card -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><span class="text-blue-500">💰</span> 기본 설정</h2>
+                    <div class="flex flex-col gap-2">
+                        <label class="text-sm font-medium text-gray-700">나의 일급액 (원)</label>
+                        <input type="text" id="daily-wage-input" oninput="formatNumberInput(this); updateDailyWage();" placeholder="예: 100,000" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition font-semibold text-right">
+                        <p class="text-xs text-gray-500">※ 일급액을 변경해도 이전에 '출근' 처리된 날의 급여는 당시 일급으로 유지됩니다.</p>
+                    </div>
+                </div>
+
+                <!-- Schedule Registration Card -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><span class="text-green-500">📅</span> 출근 일정 등록</h2>
+                    
+                    <!-- Tabs -->
+                    <div class="flex bg-gray-100 p-1 rounded-lg mb-4">
+                        <button id="tab-single" onclick="toggleScheduleMode('single')" class="flex-1 py-2 text-sm font-semibold bg-white shadow-sm rounded-md text-gray-800 transition">하루씩 추가</button>
+                        <button id="tab-bulk" onclick="toggleScheduleMode('bulk')" class="flex-1 py-2 text-sm font-semibold text-gray-500 hover:text-gray-700 transition">여러 날 추가</button>
+                    </div>
+
+                    <!-- Single Add Mode -->
+                    <div id="mode-single" class="flex flex-col gap-3">
+                        <input type="date" id="schedule-date-input" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition">
+                        <button onclick="addSchedule()" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl transition shadow-sm">
+                            일정 추가하기
+                        </button>
+                    </div>
+
+                    <!-- Bulk Add Mode (Hidden by default) -->
+                    <div id="mode-bulk" class="hidden flex-col gap-3">
+                        <div class="flex items-center gap-2">
+                            <input type="date" id="bulk-start-date" class="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none" title="시작일">
+                            <span class="text-gray-500 font-medium">~</span>
+                            <input type="date" id="bulk-end-date" class="w-full p-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none" title="종료일">
+                        </div>
+                        
+                        <div class="grid grid-cols-7 gap-1 mt-1">
+                            <label class="flex flex-col items-center gap-1 cursor-pointer">
+                                <input type="checkbox" value="1" class="bulk-day w-4 h-4 text-green-600 focus:ring-green-500"><span class="text-xs font-medium">월</span>
+                            </label>
+                            <label class="flex flex-col items-center gap-1 cursor-pointer">
+                                <input type="checkbox" value="2" class="bulk-day w-4 h-4 text-green-600 focus:ring-green-500"><span class="text-xs font-medium">화</span>
+                            </label>
+                            <label class="flex flex-col items-center gap-1 cursor-pointer">
+                                <input type="checkbox" value="3" class="bulk-day w-4 h-4 text-green-600 focus:ring-green-500"><span class="text-xs font-medium">수</span>
+                            </label>
+                            <label class="flex flex-col items-center gap-1 cursor-pointer">
+                                <input type="checkbox" value="4" class="bulk-day w-4 h-4 text-green-600 focus:ring-green-500"><span class="text-xs font-medium">목</span>
+                            </label>
+                            <label class="flex flex-col items-center gap-1 cursor-pointer">
+                                <input type="checkbox" value="5" class="bulk-day w-4 h-4 text-green-600 focus:ring-green-500"><span class="text-xs font-medium">금</span>
+                            </label>
+                            <label class="flex flex-col items-center gap-1 cursor-pointer text-blue-600">
+                                <input type="checkbox" value="6" class="bulk-day w-4 h-4 text-green-600 focus:ring-green-500"><span class="text-xs font-medium">토</span>
+                            </label>
+                            <label class="flex flex-col items-center gap-1 cursor-pointer text-red-600">
+                                <input type="checkbox" value="0" class="bulk-day w-4 h-4 text-green-600 focus:ring-green-500"><span class="text-xs font-medium">일</span>
+                            </label>
+                        </div>
+
+                        <button onclick="addBulkSchedules()" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl transition shadow-sm mt-2">
+                            선택한 요일 일괄 추가
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Deductions Setting Card -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-bold flex items-center gap-2"><span class="text-red-500">📉</span> 공제 항목 (4대보험)</h2>
+                    </div>
+                    <p class="text-xs text-gray-500 mb-4">체크박스를 해제하면 월급 계산에서 제외됩니다.</p>
+                    
+                    <div class="flex flex-col gap-3" id="deductions-container">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+
+                <!-- Custom Items Setting Card -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><span class="text-yellow-500">✨</span> 추가 수당 및 공제 관리</h2>
+                    <p class="text-xs text-gray-500 mb-4">주휴수당, 식대 등 추가 항목을 직접 등록하세요.</p>
+                    
+                    <div class="flex flex-col gap-3 mb-4 bg-gray-50 p-4 rounded-xl border border-gray-200 text-sm">
+                        <div class="grid grid-cols-2 gap-2">
+                            <select id="custom-type" class="p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500 font-medium">
+                                <option value="allowance">수당 추가 (➕)</option>
+                                <option value="deduction">공제 추가 (➖)</option>
+                            </select>
+                            <select id="custom-val-type" class="p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500 font-medium">
+                                <option value="fixed">고정액 (원)</option>
+                                <option value="percent">비율 (%)</option>
+                            </select>
+                        </div>
+                        <input type="text" id="custom-name" placeholder="항목명 (예: 주휴수당, 지각비)" class="p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500">
+                        <input type="number" id="custom-value" placeholder="금액 또는 비율 (숫자만 입력)" class="p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500">
+                        <button onclick="addCustomItem()" class="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 rounded-lg transition shadow-sm mt-1">
+                            새 항목 추가하기
+                        </button>
+                    </div>
+                    <div class="flex flex-col gap-2" id="custom-items-container">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right Column: Results (Summary & List) -->
+            <div class="w-full lg:w-2/3 flex flex-col gap-6">
+                
+                <!-- Monthly Summary Card -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h2 class="text-lg font-bold mb-6 flex items-center gap-2">
+                        <span class="text-indigo-500">📊</span> <span id="summary-title">2026년 10월 예상 월급</span>
+                    </h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div class="bg-blue-50 p-4 rounded-xl">
+                            <p class="text-sm text-blue-600 font-medium mb-1">총 출근일수</p>
+                            <p class="text-2xl font-bold text-blue-800"><span id="summary-days">0</span>일</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-xl">
+                            <p class="text-sm text-gray-600 font-medium mb-1">공제 전 총액</p>
+                            <p class="text-2xl font-bold text-gray-800"><span id="summary-gross">0</span>원</p>
+                        </div>
+                        <div class="bg-red-50 p-4 rounded-xl">
+                            <p class="text-sm text-red-600 font-medium mb-1">공제액 합계</p>
+                            <p class="text-2xl font-bold text-red-800"><span id="summary-deductions">0</span>원</p>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-gray-200 pt-6 flex flex-col md:flex-row justify-between items-center">
+                        <div>
+                            <p class="text-sm text-gray-500 font-medium">실수령액 (공제 후)</p>
+                            <p class="text-3xl sm:text-4xl font-extrabold text-indigo-600 mt-1"><span id="summary-net">0</span>원</p>
+                        </div>
+                        <button onclick="toggleDeductionDetails()" class="mt-4 md:mt-0 text-sm text-indigo-500 hover:text-indigo-700 underline font-medium">
+                            공제액 상세 보기
+                        </button>
+                    </div>
+
+                    <!-- Hidden by default, toggled via JS -->
+                    <div id="deduction-details" class="hidden mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200 text-sm">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+
+                <!-- Schedule List Card -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex-1">
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><span class="text-purple-500">📋</span> 출근 일정 목록</h2>
+                    
+                    <div id="schedule-list" class="flex flex-col gap-3">
+                        <!-- List items generated by JS -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- State Management ---
+        let state = {
+            dailyWage: 0,
+            currentViewDate: new Date(), // Used for month navigation
+            deductions: {
+                pension: { name: '국민연금', enabled: false, type: 'percent', value: 4.5 },
+                health: { name: '건강보험', enabled: true, type: 'percent', value: 3.595 },
+                care: { name: '장기요양보험', enabled: true, type: 'percent_of_health', value: 13.14 },
+                employment: { name: '고용보험', enabled: true, type: 'percent', value: 0.9 }
+            },
+            customItems: [], // 주휴수당 등 커스텀 추가 항목 저장
+            schedules: [] 
+            // schedule item: { id: string, date: string(YYYY-MM-DD), status: 'planned'|'attended'|'missed', earnedWage: number }
+        };
+
+        // --- Initialization ---
+        window.onload = function() {
+            loadData();
+            initDateInputs();
+            renderAll();
+        };
+
+        // --- Core Functions ---
+        function loadData() {
+            const saved = localStorage.getItem('wageApp_state');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    state.dailyWage = parsed.dailyWage || 0;
+                    state.schedules = parsed.schedules || [];
+                    state.customItems = parsed.customItems || [];
+                    // Merge deductions to allow new fields if added later
+                    if(parsed.deductions) {
+                        for(let key in state.deductions) {
+                            if(parsed.deductions[key] !== undefined) {
+                                state.deductions[key].enabled = parsed.deductions[key].enabled;
+                                if (parsed.deductions[key].customValue !== undefined) {
+                                    state.deductions[key].customValue = parsed.deductions[key].customValue;
+                                }
+                            }
+                        }
+                    }
+                } catch(e) {
+                    showToast('데이터를 불러오는 중 오류가 발생했습니다.', 'error');
+                }
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('wageApp_state', JSON.stringify({
+                dailyWage: state.dailyWage,
+                deductions: state.deductions,
+                customItems: state.customItems,
+                schedules: state.schedules
+            }));
+        }
+
+        function initDateInputs() {
+            // Set default add schedule date to today
+            const today = getLocalYYYYMMDD(new Date());
+            document.getElementById('schedule-date-input').value = today;
+            document.getElementById('bulk-start-date').value = today;
+            
+            // Set end date to +1 month by default
+            const nextMonth = new Date();
+            nextMonth.setMonth(nextMonth.getMonth() + 1);
+            document.getElementById('bulk-end-date').value = getLocalYYYYMMDD(nextMonth);
+            
+            document.getElementById('daily-wage-input').value = state.dailyWage ? state.dailyWage.toLocaleString() : '';
+        }
+
+        // --- UI Rendering ---
+        function renderAll() {
+            renderMonthSelector();
+            renderDeductionSettings();
+            renderCustomItems();
+            renderScheduleList();
+            renderSummary();
+            saveData();
+        }
+
+        function renderMonthSelector() {
+            const y = state.currentViewDate.getFullYear();
+            const m = state.currentViewDate.getMonth() + 1;
+            document.getElementById('current-month-display').innerText = `${y}. ${m.toString().padStart(2, '0')}`;
+            document.getElementById('summary-title').innerText = `${y}년 ${m}월 예상 월급`;
+        }
+
+        function renderDeductionSettings() {
+            const container = document.getElementById('deductions-container');
+            container.innerHTML = '';
+
+            for (let key in state.deductions) {
+                const item = state.deductions[key];
+                
+                let desc = '';
+                if (item.type === 'percent') desc = `(급여의 ${item.value}%)`;
+                if (item.type === 'percent_of_health') desc = `(건강보험의 ${item.value}%)`;
+
+                const div = document.createElement('div');
+                div.className = "flex items-center justify-between p-3 border border-gray-100 rounded-lg bg-gray-50 hover:bg-gray-100 transition";
+                
+                div.innerHTML = `
+                    <label class="flex items-center gap-3 cursor-pointer select-none w-full">
+                        <input type="checkbox" onchange="toggleDeduction('${key}', this.checked)" ${item.enabled ? 'checked' : ''} class="w-5 h-5 text-blue-600 rounded focus:ring-blue-500">
+                        <div class="flex flex-col">
+                            <span class="text-sm font-semibold text-gray-800">${item.name}</span>
+                            <span class="text-xs text-gray-500">${desc}</span>
+                        </div>
+                    </label>
+                `;
+                container.appendChild(div);
+            }
+        }
+
+        function renderCustomItems() {
+            const container = document.getElementById('custom-items-container');
+            container.innerHTML = '';
+
+            if (state.customItems.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-400 text-center py-2">추가된 수당이나 공제가 없습니다.</p>';
+                return;
+            }
+
+            state.customItems.forEach(item => {
+                const isAllowance = item.type === 'allowance';
+                const typeIcon = isAllowance ? '➕ 수당' : '➖ 공제';
+                const typeColor = isAllowance ? 'text-blue-600' : 'text-red-600';
+                const desc = item.valType === 'percent' ? `(월 기본급의 ${item.value}%)` : `(${item.value.toLocaleString()}원)`;
+
+                const div = document.createElement('div');
+                div.className = "flex items-center justify-between p-3 border border-gray-100 rounded-lg bg-white shadow-sm transition";
+                
+                div.innerHTML = `
+                    <label class="flex items-center gap-3 cursor-pointer select-none">
+                        <input type="checkbox" onchange="toggleCustomItem('${item.id}', this.checked)" ${item.enabled ? 'checked' : ''} class="w-5 h-5 text-yellow-500 rounded focus:ring-yellow-500">
+                        <div class="flex flex-col">
+                            <span class="text-sm font-semibold text-gray-800">${item.name} <span class="text-xs font-normal ${typeColor}">${typeIcon}</span></span>
+                            <span class="text-xs text-gray-500">${desc}</span>
+                        </div>
+                    </label>
+                    <button onclick="deleteCustomItem('${item.id}')" class="text-gray-400 hover:text-red-500 transition p-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function renderScheduleList() {
+            const container = document.getElementById('schedule-list');
+            container.innerHTML = '';
+
+            // Filter for current view month
+            const viewYear = state.currentViewDate.getFullYear();
+            const viewMonth = state.currentViewDate.getMonth() + 1;
+            
+            const monthSchedules = state.schedules.filter(s => {
+                const parts = s.date.split('-');
+                return parseInt(parts[0]) === viewYear && parseInt(parts[1]) === viewMonth;
+            });
+
+            if (monthSchedules.length === 0) {
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-10 text-gray-400">
+                        <svg class="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        <p class="font-medium">출근 일정을 등록하세요!</p>
+                    </div>`;
+                return;
+            }
+
+            // Sort: Nearest future date first, then past dates chronologically
+            // The prompt says: "가장 가까운 날을 먼저 배치, 한 달 일정을 순서대로 배치"
+            // We will sort all ascending chronologically for natural flow within the month.
+            monthSchedules.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            const today = getLocalYYYYMMDD(new Date());
+
+            monthSchedules.forEach(s => {
+                const isPast = s.date < today;
+                const isToday = s.date === today;
+                
+                // D-Day calc
+                const diffTime = new Date(s.date) - new Date(today);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                let dDayText = '';
+                let dDayClass = '';
+                if (diffDays > 0) {
+                    dDayText = `D-${diffDays}`;
+                    dDayClass = 'bg-blue-100 text-blue-700';
+                } else if (diffDays === 0) {
+                    dDayText = `D-Day`;
+                    dDayClass = 'bg-red-100 text-red-700';
+                } else {
+                    dDayText = `D+${Math.abs(diffDays)}`;
+                    dDayClass = 'bg-gray-200 text-gray-600';
+                }
+
+                // Status styling
+                let statusBadge = '';
+                let nextStatus = '';
+                let rowBg = 'bg-white';
+                
+                if (s.status === 'planned') {
+                    statusBadge = `<button onclick="cycleStatus('${s.id}')" class="px-3 py-1 rounded-full text-sm font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 transition">출근 예정</button>`;
+                } else if (s.status === 'attended') {
+                    statusBadge = `<button onclick="cycleStatus('${s.id}')" class="px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-700 border border-green-200 hover:bg-green-200 transition">출근 완료</button>`;
+                    rowBg = 'bg-green-50/30';
+                } else if (s.status === 'missed') {
+                    statusBadge = `<button onclick="cycleStatus('${s.id}')" class="px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-700 border border-red-200 hover:bg-red-200 transition">미출근</button>`;
+                    rowBg = 'bg-red-50/30';
+                }
+
+                const itemHTML = `
+                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-xl ${rowBg} transition hover:shadow-sm">
+                        <div class="flex items-center gap-4">
+                            <span class="px-2 py-1 rounded-md text-xs font-bold ${dDayClass} min-w-[3.5rem] text-center">${dDayText}</span>
+                            <div class="flex flex-col">
+                                <span class="font-bold text-gray-800">${s.date}</span>
+                                ${s.status === 'attended' ? `<span class="text-xs text-gray-500">적용 일급: ${s.earnedWage.toLocaleString()}원</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            ${statusBadge}
+                            <button onclick="deleteSchedule('${s.id}')" class="text-gray-400 hover:text-red-500 transition p-1">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', itemHTML);
+            });
+        }
+
+        function renderSummary() {
+            const viewYear = state.currentViewDate.getFullYear();
+            const viewMonth = state.currentViewDate.getMonth() + 1;
+            
+            // Filter schedules for attended in current month
+            const attendedSchedules = state.schedules.filter(s => {
+                const parts = s.date.split('-');
+                const isMatchMonth = parseInt(parts[0]) === viewYear && parseInt(parts[1]) === viewMonth;
+                return isMatchMonth && s.status === 'attended';
+            });
+
+            const totalDays = attendedSchedules.length;
+            const baseIncome = attendedSchedules.reduce((sum, s) => sum + (s.earnedWage || 0), 0);
+
+            // Calculate Custom Allowances & Deductions
+            let customAllowancesTotal = 0;
+            let customDeductionsTotal = 0;
+            let customDetailsHtml = '';
+
+            state.customItems.forEach(item => {
+                if (!item.enabled) return;
+                
+                let amount = 0;
+                if (item.valType === 'percent') {
+                    // 비율인 경우 기본급을 기준으로 계산
+                    amount = Math.floor(baseIncome * (item.value / 100));
+                } else {
+                    amount = item.value;
+                }
+
+                if (item.type === 'allowance') {
+                    customAllowancesTotal += amount;
+                    customDetailsHtml += `
+                        <div class="flex justify-between py-1 border-b border-gray-200">
+                            <span class="text-blue-600 font-medium">${item.name} (수당)</span>
+                            <span class="font-medium text-gray-800">+${amount.toLocaleString()} 원</span>
+                        </div>
+                    `;
+                } else {
+                    customDeductionsTotal += amount;
+                    customDetailsHtml += `
+                        <div class="flex justify-between py-1 border-b border-gray-200">
+                            <span class="text-red-600 font-medium">${item.name} (추가 공제)</span>
+                            <span class="font-medium text-gray-800">-${amount.toLocaleString()} 원</span>
+                        </div>
+                    `;
+                }
+            });
+
+            const grossIncome = baseIncome + customAllowancesTotal;
+
+            // Calculate Deductions
+            let deductions = { pension: 0, health: 0, care: 0, employment: 0 };
+            let totalDeductions = customDeductionsTotal;
+
+            if (grossIncome > 0) {
+                if (state.deductions.health.enabled) {
+                    deductions.health = Math.floor(grossIncome * (state.deductions.health.value / 100));
+                }
+                if (state.deductions.care.enabled) {
+                    deductions.care = Math.floor(deductions.health * (state.deductions.care.value / 100));
+                }
+                if (state.deductions.employment.enabled) {
+                    deductions.employment = Math.floor(grossIncome * (state.deductions.employment.value / 100));
+                }
+                if (state.deductions.pension.enabled) {
+                    // For part-timers, pension is often 4.5% if applicable
+                    deductions.pension = Math.floor(grossIncome * (state.deductions.pension.value / 100));
+                }
+                
+                totalDeductions += (deductions.pension + deductions.health + deductions.care + deductions.employment);
+            }
+
+            const netIncome = grossIncome - totalDeductions;
+
+            // Update DOM
+            document.getElementById('summary-days').innerText = totalDays;
+            document.getElementById('summary-gross').innerText = grossIncome.toLocaleString();
+            document.getElementById('summary-deductions').innerText = totalDeductions.toLocaleString();
+            document.getElementById('summary-net').innerText = netIncome.toLocaleString();
+
+            // Update Deduction Details panel
+            document.getElementById('deduction-details').innerHTML = customDetailsHtml + `
+                <div class="flex justify-between py-1 border-b border-gray-200">
+                    <span class="text-gray-600">국민연금</span>
+                    <span class="font-medium text-gray-800">${deductions.pension.toLocaleString()} 원</span>
+                </div>
+                <div class="flex justify-between py-1 border-b border-gray-200">
+                    <span class="text-gray-600">건강보험</span>
+                    <span class="font-medium text-gray-800">${deductions.health.toLocaleString()} 원</span>
+                </div>
+                <div class="flex justify-between py-1 border-b border-gray-200">
+                    <span class="text-gray-600">장기요양보험</span>
+                    <span class="font-medium text-gray-800">${deductions.care.toLocaleString()} 원</span>
+                </div>
+                <div class="flex justify-between py-1">
+                    <span class="text-gray-600">고용보험</span>
+                    <span class="font-medium text-gray-800">${deductions.employment.toLocaleString()} 원</span>
+                </div>
+            `;
+        }
+
+        // --- User Actions ---
+        function updateDailyWage() {
+            const el = document.getElementById('daily-wage-input');
+            const val = parseInt(el.value.replace(/,/g, ''), 10);
+            if (!isNaN(val)) {
+                state.dailyWage = val;
+            } else {
+                state.dailyWage = 0;
+            }
+            saveData();
+            // Note: We don't retroactively change already 'attended' wages based on prompt rules.
+        }
+
+        function toggleDeduction(key, isChecked) {
+            state.deductions[key].enabled = isChecked;
+            renderAll();
+        }
+
+        function addCustomItem() {
+            const nameEl = document.getElementById('custom-name');
+            const valEl = document.getElementById('custom-value');
+            const type = document.getElementById('custom-type').value;
+            const valType = document.getElementById('custom-val-type').value;
+
+            const name = nameEl.value.trim();
+            const value = parseFloat(valEl.value);
+
+            if (!name) {
+                showToast('항목명을 입력해주세요.', 'error');
+                return;
+            }
+            if (isNaN(value) || value <= 0) {
+                showToast('유효한 금액이나 비율을 입력해주세요.', 'error');
+                return;
+            }
+
+            state.customItems.push({
+                id: generateId(),
+                name: name,
+                type: type, // 'allowance' or 'deduction'
+                valType: valType, // 'fixed' or 'percent'
+                value: value,
+                enabled: true
+            });
+
+            nameEl.value = '';
+            valEl.value = '';
+            showToast('항목이 추가되었습니다.', 'success');
+            renderAll();
+        }
+
+        function toggleCustomItem(id, isChecked) {
+            const item = state.customItems.find(i => i.id === id);
+            if (item) {
+                item.enabled = isChecked;
+                renderAll();
+            }
+        }
+
+        function deleteCustomItem(id) {
+            state.customItems = state.customItems.filter(i => i.id !== id);
+            showToast('항목이 삭제되었습니다.', 'success');
+            renderAll();
+        }
+
+        function addSchedule() {
+            const dateInput = document.getElementById('schedule-date-input').value;
+            if (!dateInput) {
+                showToast('출근 날짜를 선택해주세요.', 'error');
+                return;
+            }
+
+            const today = getLocalYYYYMMDD(new Date());
+            
+            // F01 예외처리: 과거 출근일정은 등록하지 않고 안내
+            if (dateInput < today) {
+                showToast('과거 날짜는 새로 등록할 수 없습니다.', 'error');
+                return;
+            }
+
+            // Check duplicate
+            if (state.schedules.find(s => s.date === dateInput)) {
+                showToast('이미 등록된 날짜입니다.', 'error');
+                return;
+            }
+
+            const newSchedule = {
+                id: generateId(),
+                date: dateInput,
+                status: 'planned', // planned, attended, missed
+                earnedWage: 0
+            };
+
+            state.schedules.push(newSchedule);
+            
+            // Change view to the month of the newly added schedule
+            state.currentViewDate = new Date(dateInput);
+            
+            showToast('일정이 추가되었습니다.', 'success');
+            renderAll();
+        }
+
+        function toggleScheduleMode(mode) {
+            const tabSingle = document.getElementById('tab-single');
+            const tabBulk = document.getElementById('tab-bulk');
+            const modeSingle = document.getElementById('mode-single');
+            const modeBulk = document.getElementById('mode-bulk');
+
+            if (mode === 'single') {
+                tabSingle.className = "flex-1 py-2 text-sm font-semibold bg-white shadow-sm rounded-md text-gray-800 transition";
+                tabBulk.className = "flex-1 py-2 text-sm font-semibold text-gray-500 hover:text-gray-700 transition bg-transparent";
+                modeSingle.classList.remove('hidden');
+                modeSingle.classList.add('flex');
+                modeBulk.classList.add('hidden');
+                modeBulk.classList.remove('flex');
+            } else {
+                tabBulk.className = "flex-1 py-2 text-sm font-semibold bg-white shadow-sm rounded-md text-gray-800 transition";
+                tabSingle.className = "flex-1 py-2 text-sm font-semibold text-gray-500 hover:text-gray-700 transition bg-transparent";
+                modeBulk.classList.remove('hidden');
+                modeBulk.classList.add('flex');
+                modeSingle.classList.add('hidden');
+                modeSingle.classList.remove('flex');
+            }
+        }
+
+        function addBulkSchedules() {
+            const startDateStr = document.getElementById('bulk-start-date').value;
+            const endDateStr = document.getElementById('bulk-end-date').value;
+            
+            if (!startDateStr || !endDateStr) {
+                showToast('시작일과 종료일을 모두 선택해주세요.', 'error');
+                return;
+            }
+
+            const startDate = new Date(startDateStr);
+            const endDate = new Date(endDateStr);
+            const todayStr = getLocalYYYYMMDD(new Date());
+
+            if (startDate > endDate) {
+                showToast('종료일이 시작일보다 빠를 수 없습니다.', 'error');
+                return;
+            }
+
+            const selectedDays = Array.from(document.querySelectorAll('.bulk-day:checked')).map(cb => parseInt(cb.value));
+            
+            if (selectedDays.length === 0) {
+                showToast('추가할 요일을 하나 이상 선택해주세요.', 'error');
+                return;
+            }
+
+            let currentDate = new Date(startDate);
+            let addedCount = 0;
+            let skipPastCount = 0;
+            let skipDupCount = 0;
+
+            while (currentDate <= endDate) {
+                const dayOfWeek = currentDate.getDay(); // 0(Sun) ~ 6(Sat)
+                if (selectedDays.includes(dayOfWeek)) {
+                    const dateStr = getLocalYYYYMMDD(currentDate);
+                    
+                    if (dateStr < todayStr) {
+                        skipPastCount++; // 과거 날짜 스킵
+                    } else if (state.schedules.find(s => s.date === dateStr)) {
+                        skipDupCount++; // 이미 등록된 중복 날짜 스킵
+                    } else {
+                        state.schedules.push({
+                            id: generateId(),
+                            date: dateStr,
+                            status: 'planned',
+                            earnedWage: 0
+                        });
+                        addedCount++;
+                    }
+                }
+                currentDate.setDate(currentDate.getDate() + 1); // 다음 날짜로 이동
+            }
+
+            if (addedCount > 0) {
+                state.currentViewDate = new Date(startDateStr); // 추가된 달로 뷰 이동
+                let msg = `총 ${addedCount}건의 일정이 추가되었습니다.`;
+                if (skipPastCount > 0 || skipDupCount > 0) {
+                    msg += ` (과거/중복 제외)`;
+                }
+                showToast(msg, 'success');
+                renderAll();
+            } else {
+                showToast('추가할 수 있는 유효한 날짜가 없습니다 (과거 또는 중복 날짜).', 'error');
+            }
+        }
+
+        function deleteSchedule(id) {
+            // Using custom modal conceptually, but replacing with simple UI element removal for safety from alert/confirm
+            state.schedules = state.schedules.filter(s => s.id !== id);
+            showToast('일정이 삭제되었습니다.', 'success');
+            renderAll();
+        }
+
+        function cycleStatus(id) {
+            const schedule = state.schedules.find(s => s.id === id);
+            if (!schedule) return;
+
+            if (schedule.status === 'planned') {
+                if (state.dailyWage <= 0) {
+                    showToast('출근 처리 전, 일급액을 설정해주세요.', 'error');
+                    return;
+                }
+                schedule.status = 'attended';
+                // Lock in the wage at the time of attendance
+                schedule.earnedWage = state.dailyWage; 
+            } else if (schedule.status === 'attended') {
+                schedule.status = 'missed';
+                schedule.earnedWage = 0;
+            } else {
+                schedule.status = 'planned';
+                schedule.earnedWage = 0;
+            }
+            renderAll();
+        }
+
+        function changeMonth(delta) {
+            const current = state.currentViewDate;
+            state.currentViewDate = new Date(current.getFullYear(), current.getMonth() + delta, 1);
+            renderAll();
+        }
+
+        function toggleDeductionDetails() {
+            const el = document.getElementById('deduction-details');
+            if (el.classList.contains('hidden')) {
+                el.classList.remove('hidden');
+            } else {
+                el.classList.add('hidden');
+            }
+        }
+
+        // --- Utility Functions ---
+        function formatNumberInput(input) {
+            let value = input.value.replace(/,/g, '').replace(/[^0-9]/g, '');
+            if (value !== '') {
+                input.value = parseInt(value, 10).toLocaleString();
+            } else {
+                input.value = '';
+            }
+        }
+
+        function getLocalYYYYMMDD(date) {
+            const tzoffset = date.getTimezoneOffset() * 60000;
+            const localISOTime = (new Date(date - tzoffset)).toISOString().slice(0, -1);
+            return localISOTime.split('T')[0];
+        }
+
+        function generateId() {
+            return Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+        }
+
+        // Custom Message Box (Toast) to replace alert()
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            let bgClass = 'bg-gray-800 text-white';
+            let icon = 'ℹ️';
+            
+            if(type === 'error') {
+                bgClass = 'bg-red-500 text-white';
+                icon = '🚨';
+            } else if(type === 'success') {
+                bgClass = 'bg-green-500 text-white';
+                icon = '✅';
+            }
+
+            toast.className = `flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg ${bgClass} toast-enter text-sm font-medium min-w-[250px]`;
+            toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+            
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.remove('toast-enter');
+                toast.classList.add('toast-exit');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+    </script>
+</body>
+</html>
